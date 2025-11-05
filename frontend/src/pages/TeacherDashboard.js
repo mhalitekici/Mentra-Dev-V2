@@ -25,6 +25,12 @@ const TeacherDashboard = () => {
     note: ''
   });
   const [notAttendedNote, setNotAttendedNote] = useState('');
+  const [rescheduleStep, setRescheduleStep] = useState('reason'); // reason, confirm, datepicker
+  const [rescheduleData, setRescheduleData] = useState({
+    date: null,
+    startTime: '',
+    endTime: '',
+  });
 
   useEffect(() => {
     fetchStats();
@@ -57,6 +63,7 @@ const TeacherDashboard = () => {
   const handleNotAttended = (lesson) => {
     setSelectedLesson(lesson);
     setNotAttendedNote('');
+    setRescheduleStep('reason');
     setShowNotAttendedDialog(true);
   };
 
@@ -79,22 +86,48 @@ const TeacherDashboard = () => {
     }
   };
 
-  const submitNotAttended = async () => {
+  const submitNotAttended = async (reschedule = false) => {
     try {
       const token = localStorage.getItem('mentra_token');
-      await axios.post(
-        `${API}/lessons/${selectedLesson.lesson_id}/mark-not-attended`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          params: { note: notAttendedNote }
-        }
-      );
-      toast.success('Ders yapılmadı olarak işaretlendi');
+
+      let payload;
+      let url = `${API}/lessons/${selectedLesson.lesson_id}/not-attended-and-reschedule`;
+
+      if (reschedule) {
+        payload = {
+          original_date: selectedLesson.date,
+          reason: notAttendedNote,
+          reschedule: true,
+          new_date: rescheduleData.date,
+          new_start_time: rescheduleData.startTime,
+          new_end_time: rescheduleData.endTime
+        };
+      } else {
+        payload = {
+          original_date: selectedLesson.date,
+          reason: notAttendedNote,
+          reschedule: false
+        };
+      }
+
+      await axios.post(url, payload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (reschedule) {
+        toast.success('Ders ertelendi ve kaydedildi!');
+      } else {
+        toast.success('Ders yapılmadı olarak işaretlendi');
+      }
+
       setShowNotAttendedDialog(false);
       fetchStats();
     } catch (error) {
-      toast.error('İşlem başarısız');
+      if (error.response && error.response.status === 409) {
+        toast.error('Seçilen zaman diliminde başka bir ders var.');
+      } else {
+        toast.error('İşlem başarısız oldu');
+      }
     }
   };
 
@@ -292,27 +325,74 @@ const TeacherDashboard = () => {
           <DialogHeader>
             <DialogTitle>Ders Yapılmadı - {selectedLesson?.student_name}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="notAttendedNote">Neden ders yapılmadı? *</Label>
-              <Textarea
-                id="notAttendedNote"
-                value={notAttendedNote}
-                onChange={(e) => setNotAttendedNote(e.target.value)}
-                placeholder="Örn: Öğrenci hastaydı, öğretmen müsait değildi, vs."
-                rows={4}
-                required
-              />
+          {rescheduleStep === 'reason' && (
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="notAttendedNote">Neden ders yapılmadı? (Mazeret)</Label>
+                <Textarea
+                  id="notAttendedNote"
+                  value={notAttendedNote}
+                  onChange={(e) => setNotAttendedNote(e.target.value)}
+                  placeholder="Örn: Öğrenci rahatsızdı."
+                  rows={3}
+                  required
+                />
+              </div>
+              <Button
+                onClick={() => setRescheduleStep('confirm')}
+                className="w-full"
+                disabled={!notAttendedNote}
+              >
+                Devam
+              </Button>
             </div>
-            <Button
-              onClick={submitNotAttended}
-              variant="destructive"
-              className="w-full"
-              disabled={!notAttendedNote}
-            >
-              Kaydet
-            </Button>
-          </div>
+          )}
+          {rescheduleStep === 'confirm' && (
+            <div className="space-y-4">
+              <p>Dersi başka güne atamak ister misiniz?</p>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => submitNotAttended(false)}>Hayır</Button>
+                <Button onClick={() => setRescheduleStep('datepicker')}>Evet</Button>
+              </div>
+            </div>
+          )}
+          {rescheduleStep === 'datepicker' && (
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="reschedule-date">Yeni Tarih</Label>
+                <Input
+                  id="reschedule-date"
+                  type="date"
+                  onChange={(e) => setRescheduleData({...rescheduleData, date: e.target.value})}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="reschedule-start">Başlangıç</Label>
+                  <Input
+                    id="reschedule-start"
+                    type="time"
+                    onChange={(e) => setRescheduleData({...rescheduleData, startTime: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="reschedule-end">Bitiş</Label>
+                  <Input
+                    id="reschedule-end"
+                    type="time"
+                    onChange={(e) => setRescheduleData({...rescheduleData, endTime: e.target.value})}
+                  />
+                </div>
+              </div>
+              <Button
+                onClick={() => submitNotAttended(true)}
+                className="w-full"
+                disabled={!rescheduleData.date || !rescheduleData.startTime || !rescheduleData.endTime}
+              >
+                Dersi Ertele
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

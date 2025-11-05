@@ -670,7 +670,8 @@ async def get_dashboard(current_user: User = Depends(get_current_user)):
                 'start_time': lesson['start_time'],
                 'end_time': lesson['end_time'],
                 'topic': lesson.get('topic', 'Konu belirtilmemiş'),
-                'status': lesson['status']
+                'status': lesson['status'],
+                'date': today_str
             })
 
     # Add lessons moved TO today via overrides
